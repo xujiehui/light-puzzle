@@ -3,7 +3,8 @@ import { GameState, GameStats, Language, LevelConfig, Theme } from './types';
 import { LEVELS, TRANSLATIONS, IS_DEV_MODE } from './constants';
 import { PuzzleBoard } from './components/PuzzleBoard';
 import { VictoryModal } from './components/VictoryModal';
-import { ArrowLeft, Eye, Play, Zap, Lock, Globe, ChevronLeft, ChevronRight, Sun, Moon } from 'lucide-react';
+import { SmartImage } from './components/SmartImage';
+import { ArrowLeft, Eye, Play, Zap, Lock, Globe, ChevronLeft, ChevronRight, Sun, Moon, PlayCircle } from 'lucide-react';
 
 // Declare global confetti
 declare const confetti: any;
@@ -17,16 +18,31 @@ interface StoredLevelStats {
 }
 
 export default function App() {
-  const [currentLevelIndex, setCurrentLevelIndex] = useState(0);
+  const [currentLevelIndex, setCurrentLevelIndex] = useState(() => {
+    try {
+      const lastPlayed = localStorage.getItem('lumina_last_played_level');
+      if (lastPlayed) {
+        const idx = parseInt(lastPlayed, 10);
+        if (!isNaN(idx) && idx >= 0 && idx < LEVELS.length) {
+          return idx;
+        }
+      }
+    } catch (e) { 
+      // ignore error
+    }
+    return 0;
+  });
+
   const [gameState, setGameState] = useState<GameState>(GameState.MENU);
   const [moves, setMoves] = useState(0);
   const [timeElapsed, setTimeElapsed] = useState(0);
   const [showHint, setShowHint] = useState(false);
   const [gameId, setGameId] = useState(0);
   
-  const [currentChapterIndex, setCurrentChapterIndex] = useState(0);
+  const [currentChapterIndex, setCurrentChapterIndex] = useState(() => {
+    return Math.floor(currentLevelIndex / 10);
+  });
   
-  // Language State
   const [language, setLanguage] = useState<Language>(() => {
     try {
       const saved = localStorage.getItem('lumina_language');
@@ -36,7 +52,6 @@ export default function App() {
     return Language.ZH;
   });
 
-  // Theme State
   const [theme, setTheme] = useState<Theme>(() => {
     try {
       const saved = localStorage.getItem('lumina_theme');
@@ -45,7 +60,6 @@ export default function App() {
     return Theme.DARK;
   });
   
-  // Game Stats State
   const [currentScore, setCurrentScore] = useState(0);
   const [earnedStars, setEarnedStars] = useState(0);
   const [levelStats, setLevelStats] = useState<Record<number, StoredLevelStats>>({});
@@ -56,7 +70,6 @@ export default function App() {
   const touchEndX = useRef<number | null>(null);
   const touchEndY = useRef<number | null>(null);
 
-  // Apply Theme to Body
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
   }, [theme]);
@@ -75,7 +88,6 @@ export default function App() {
 
   const t = TRANSLATIONS[language];
 
-  // Load global progress
   useEffect(() => {
     try {
       const loadedStats: Record<number, StoredLevelStats> = {};
@@ -107,14 +119,16 @@ export default function App() {
 
   const currentLevel = LEVELS[currentLevelIndex];
   
-  // Preload Next Level Image (Optimization)
+  // Optimization: Preload Next Level Image
   useEffect(() => {
     const nextLevel = LEVELS[currentLevelIndex + 1];
     if (nextLevel) {
-       // Try to preload online image to populate cache
-       // We assume local is instant if it exists.
-       const img = new Image();
-       img.src = `https://picsum.photos/seed/${nextLevel.imageKeyword}-v2/800/800`;
+       // Try to preload local first, then online
+       const localImg = new Image();
+       localImg.src = `assets/images/level_${nextLevel.level}.jpg`;
+       
+       const onlineImg = new Image();
+       onlineImg.src = `https://picsum.photos/seed/${nextLevel.imageKeyword}-v2/1600/1600`;
     }
   }, [currentLevelIndex]);
 
@@ -132,6 +146,8 @@ export default function App() {
 
   const handleStartGame = (levelIndex: number) => {
     setCurrentLevelIndex(levelIndex);
+    localStorage.setItem('lumina_last_played_level', levelIndex.toString());
+    
     setMoves(0);
     setTimeElapsed(0);
     setShowHint(false);
@@ -265,7 +281,6 @@ export default function App() {
     touchEndY.current = null;
   };
 
-  // Common Header Buttons
   const SettingsButtons = () => (
     <div className="flex gap-3">
         <button 
@@ -297,6 +312,9 @@ export default function App() {
     const currentChapterLevels = levelChapters[currentChapterIndex] || [];
     const firstLevelName = currentChapterLevels[0]?.name[language] || "";
     const chapterTitle = firstLevelName.replace(/\s+[IVX]+$/, '');
+    
+    const lastPlayedLevelConfig = LEVELS[currentLevelIndex];
+    const lastPlayedName = lastPlayedLevelConfig.name[language];
 
     return (
       <div 
@@ -320,6 +338,34 @@ export default function App() {
             {t.title}
           </h1>
           <p className="text-[var(--text-sub)] uppercase tracking-[0.3em] text-[10px]">{t.subtitle}</p>
+        </div>
+
+        {/* Continue Button */}
+        <div className="z-10 w-full max-w-md px-6 mb-6">
+           <button 
+             onClick={() => handleStartGame(currentLevelIndex)}
+             className="w-full h-20 rounded-2xl relative overflow-hidden group border border-[var(--border-color)] shadow-lg transition-all active:scale-95"
+           >
+             <SmartImage 
+               level={lastPlayedLevelConfig}
+               isThumbnail={true}
+               className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:opacity-50 transition-opacity duration-500 group-hover:scale-105"
+             />
+             <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-main)]/90 via-[var(--bg-main)]/60 to-transparent flex items-center px-6 justify-between">
+                <div className="text-left">
+                   <div className="text-[10px] font-bold text-rose-500 uppercase tracking-wider mb-1">
+                     {language === Language.ZH ? "继续游戏" : "CONTINUE"}
+                   </div>
+                   <h3 className="text-lg font-serif font-bold text-[var(--text-main)]">{lastPlayedName}</h3>
+                   <span className="text-xs text-[var(--text-sub)]">
+                     {t.level} {lastPlayedLevelConfig.level}
+                   </span>
+                </div>
+                <div className="w-10 h-10 rounded-full bg-rose-500 flex items-center justify-center text-white shadow-lg shadow-rose-500/40 group-hover:scale-110 transition-transform">
+                   <PlayCircle size={24} fill="currentColor" />
+                </div>
+             </div>
+           </button>
         </div>
 
         {/* Chapter Navigation Bar */}
@@ -357,11 +403,6 @@ export default function App() {
               const isLocked = !IS_DEV_MODE && !stat.unlocked;
               const localizedName = lvl.name[language];
 
-              // For menu thumbnails, we also use online URLs fallback logic. 
-              // Ideally we would use a Thumbnail component, but for simplicity we stick to online for menu 
-              // to avoid 100 network requests to check local files simultaneously.
-              const thumbUrl = `https://picsum.photos/seed/${lvl.imageKeyword}-v2/200/150`;
-
               return (
                 <button
                   key={lvl.level}
@@ -374,14 +415,13 @@ export default function App() {
                       : 'border-[var(--border-color)] bg-[var(--bg-card)] hover:border-rose-500/50 hover:shadow-[0_0_20px_-5px_rgba(244,63,94,0.3)]'}
                   `}
                 >
-                  {/* Background Image */}
-                  <img 
-                    src={thumbUrl} 
-                    alt={localizedName}
+                  {/* Thumbnail using SmartImage */}
+                  <SmartImage 
+                    level={lvl}
+                    isThumbnail={true}
                     className="absolute inset-0 w-full h-full object-cover opacity-30 group-hover:opacity-50 transition-opacity duration-500"
                   />
                   
-                  {/* Content Overlay */}
                   <div className="absolute inset-0 flex flex-col justify-between p-3 bg-gradient-to-t from-[var(--bg-overlay)] to-transparent">
                      <div className="flex justify-between items-start">
                         <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${isLocked ? 'bg-[var(--bg-panel)] text-[var(--text-sub)]' : 'bg-rose-500 text-white'}`}>
@@ -485,7 +525,10 @@ export default function App() {
              `}
            >
              <div className="absolute inset-0 bg-[var(--bg-overlay)] backdrop-blur-sm"></div>
-             <img src={getHintUrl()} alt="Hint" className="absolute inset-0 w-full h-full object-cover opacity-90" />
+             <SmartImage 
+               level={currentLevel}
+               className="absolute inset-0 w-full h-full object-cover opacity-90"
+             />
              <div className="absolute inset-0 flex items-center justify-center">
                 <div className="bg-black/60 px-4 py-2 rounded-full text-white text-xs font-bold uppercase tracking-wider backdrop-blur-md border border-white/10">
                   {t.referenceImage}
